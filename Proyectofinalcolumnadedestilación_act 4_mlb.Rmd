@@ -1,0 +1,269 @@
+---
+title: 'Proyecto final para el módulo de Visualización de datos'
+author: "Maribel López Badillo"
+date: "`r Sys.Date()`" #
+output: 
+  html_document:
+    theme: cosmo          # Estilo visual agradable 
+    toc: true             # Habilita la Tabla de Contenidos
+    toc_float: true       # Hace que la Tabla de Contenidos flote en el lateral
+    code_folding: hide    # Permite ocultar/mostrar el código en la salida HTML
+    number_sections: true # Numera automáticamente los títulos de secciones (1, 1.1, 2, etc.)
+    df_print: paged       # Mejora la visualización de data frames grandes
+---
+
+```{r setup, include=TRUE}
+# Opciones globales para los chunks de código
+knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE, fig.align = 'center')
+
+
+## Cargar librerías necesarias para la manipulación y visualización de datos
+library(readr) 
+library(dplyr)    
+library(ggplot2) 
+library(tidyr)
+library(here)
+```
+
+# ÁNALISIS ESTADÍSTICO PARA PARÁMETROS DE OPERACIÓN EN COLUMNA DE DESTILACIÓN 
+
+## SEMANA 1 LOS DATOS
+```{r check-here, include=TRUE}
+print(here()) #  ruta que 'here' considera la raíz del proyecto
+list.files(here()) # Esto listará todos los archivos en esa raíz (deberías ver tu CSV)
+```
+### Cargar los datos
+
+```{r}
+datos <- read.csv(here("dataset_distill.csv"), sep = ";", header = TRUE)
+
+```
+
+### Inspección inicial
+
+```{r}
+print("Estructura general del dataset:")
+str(datos)
+
+print("Dimensiones:")
+print(dim(datos))
+
+print("Nombres de columnas:")
+print(names(datos))
+
+print("Resumen estadístico:")
+summary(datos)
+```
+### Limpieza 
+
+```{r}
+
+## Eliminar filas completamente vacías
+datos <- datos %>% drop_na()
+
+## Reemplazar valores NA con la media (solo numéricos)
+datos <- datos %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+```
+
+## SEMANA 2  DEFINICIÓN DEL PROBLEMA Y SELECCIÓN DEL DATASET
+
+### PREGUNTA DEL PROYECTO
+
+<p style="text-align: justify;">
+¿Cuál es el comportamiento estadístico las variables de una columna de destilación industrial, como temperaturas de los platos, presión y caudales, durante el periodo de operación de 450 horas?
+</p>
+
+### OBJETIVO
+
+<p style="text-align: justify;">
+Aplicar técnicas de estadística descriptiva y análisis de distribución en R para identificar tendencias, variabilidad y valores atípicos en las variables de operación de una columna de destilación industrial a lo largo de 450 h.
+Aun cuando los datos son simulados, estos representan la operación la operación de la columna y  permiten responder la pregunta de investigación. 
+</p>
+
+### JUSTIFICACIÓN
+
+<p style="text-align: justify;">
+Este conjunto de datos, compuesto por valores continuos, describe el comportamiento de una columna de destilación, lo cual es de gran relevancia en la ingeniería de procesos. Su disponibilidad para descargar, visualización, manipulación y análisis lo convierte en una herramienta valiosa. A pesar de ser simulados, los datos incorporan ruido y valores faltantes intencionales con fines de entrenamiento, representando así condiciones industriales reales. 
+</p>
+
+<p style="text-align: justify;">
+La fuente del dataset provienen de un artículo científico con revisión por pares, compartido por lo autores en la plataforma de ciencia de datos Kaggle, lo que garantiza su fiabilidad. Es un conjunto de datos simulado, que incorpora ruido, valores atípicos y datos faltantes para representar condiciones industriales reales. Los valores del dataset son variables numéricas continuas. Todas estas características permitirán la imputación y visualización de distribuciones reales del proceso.
+</p>
+
+<p style="text-align: justify;">
+El tamaño del conjunto es de 4500 registros para 21 variables Este número de datos es manejable con RStudio y permitirá obtener conclusiones válidas. El conjunto de datos está en formato CVS, lo que facilita la importación directa en R. 
+</p>
+
+El enelace par aobtener los datos es el siguiente:
+
+[conjunto de datos_distill.csv ](https://www.kaggle.com/code/hajaribrahiem/ml-distillation-column-lr-svr/input?select=dataset_distill.csv)
+
+*Referencia*
+
+Cote-Ballesteros, J.E., Grisales Palacios, V.H. y Rodríguez-Castellanos, J.E. (2022).
+Un algoritmo de selección de variables de enfoque híbrido basado en información mutua para aplicaciones de sensores blandos industriales basados en datos.
+Ciencia e Ingeniería Neogranadina, 32(1), 59–70.
+https://doi.org/10.18359/rcin.5644
+
+
+## SEMANA 3 TRANSFORMACIÓN DE DATOS, VISUALIZACIÓN Y ANÁLISIS DE DATOS
+
+<p style="text-align: justify;">
+En el análisis de esta columna de destilación, se creó la variable de Relación de Reflujo (L/D) por ser el parámetro operacional más crítico, pues refleja directamente tanto la eficiencia de separación como el consumo energético. Adicionalmente, la incorporación de una columna para el tiempo resultó fundamental. Dado que una columna opera dinámicamente, el tiempo permite observar cómo se comportan temperaturas, presiones y flujos a lo largo de las horas, lo que facilita detectar anomalías, identificar patrones y evaluar la respuesta del sistema ante cambios. Esta variable de tiempo se generó a partir de los datos originales del artículo, donde las mediciones fueron capturadas cada 0.1 horas.
+</p>
+```{r}
+## Crear nueva variable: relación entre D y L (Reflujo)
+datos <- datos %>%
+  mutate(reflujo = D / L)
+
+## Verificar la nueva variable
+print("Primeros valores del reflujo:")
+head(datos$reflujo)
+
+## CREAR COLUMNA DE TIEMPO
+datos <- datos %>%
+  mutate(Tiempo_h = seq(0, by = 0.1, length.out = n()))
+
+## Confirmar las nuevas columnas
+print("Primeras filas con nuevas columnas (Tiempo_h y reflujo):")
+head(datos)
+```
+
+
+### Perfiles de temperatura para sensores pares
+
+```{r}
+## Transformar los datos a formato largo para ggplot
+datos_perfil_temp <- datos %>%
+  select(Tiempo_h, starts_with("T")) %>% # Selecciona Tiempo_h y todas las columnas que empiezan con T
+  pivot_longer(cols = -Tiempo_h, names_to = "Sensor", values_to = "Temperatura") %>%
+  # Filtrar para incluir solo los sensores pares especificados
+  filter(Sensor %in% c("T2", "T4", "T6", "T8", "T10", "T12", "T14")) %>%
+  # Asegurar un orden lógico para los sensores en los gráficos
+  mutate(Sensor = factor(Sensor, levels = paste0("T", c(2, 4, 6, 8, 10, 12, 14)))) 
+
+ggplot(datos_perfil_temp, aes(x = Tiempo_h, y = Temperatura, color = Sensor)) +
+  geom_line(linewidth = 0.3) +
+  facet_wrap(~Sensor, scales = "free_y", ncol = 2) +
+  labs(
+    title = "Perfiles de Temperatura (Sensores pares)",
+    x = "Tiempo (h)",
+    y = "Temperatura (K)"
+  ) +
+  scale_color_brewer(palette = "Set2") +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.4),
+    strip.text = element_text(size = 10, face = "bold"),
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+```
+
+**Análisis perfiles de temperaturas:**
+
+<p style="text-align: justify;">
+Los datos sugieren que la columna de destilación experimenta fluctuaciones significativas en sus perfiles de temperatura, lo que podría indicar inestabilidad en el proceso o una operación lejos de un estado estacionario ideal.
+</p>
+
+### Histograma comparativo para T1 y T14
+
+```{r}
+ggplot(datos) +
+  geom_histogram(aes(x = T1, fill = "T1"), bins = 40, alpha = 0.6, color = "black") +
+  geom_histogram(aes(x = T14, fill = "T14"), bins = 40, alpha = 0.6, color = "black") +
+  scale_fill_manual(values = c("T1" = "#E69F00", "T14" = "#56B4E9")) +
+  labs(
+    title = "Distribución de Temperatura en T1 y T14",
+    x = "Temperatura (K)",
+    y = "Frecuencia",
+    fill = "Sensor"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    axis.title = element_text(face = "bold")
+  )
+```
+
+**Análisis histogramas para T1 y T14:**
+
+<p style="text-align: justify;">
+La distribución de temperaturas entre T1 y T14 confirma la existencia de un gradiente térmico esperado.
+</p>
+
+### Histograma de concentración de etanol
+
+```{r}
+ggplot(datos, aes(x = Ethanol)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(title = "Distribución de concentración de etanol",
+       x = "Concentración de etanol (mol/L)",
+       y = "Frecuencia") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+**Análisis de histograma para concentración de etanol:**
+
+<p style="text-align: justify;">
+Se observa un pico cerca de 0.88 mol/L, lo que sugiere eficiencia en la destilación. La dispersión sugiere variabilidad en condiciones operativas.
+</p>
+
+### Dispersión entre temperaturas (T1, T4, T10, T14) y caudal de alimentación (F)
+
+```{r}
+datos_largos <- datos %>%
+  select(F, T1, T4, T10, T14) %>%
+  pivot_longer(cols = -F, names_to = "Sensor", values_to = "Temperatura")
+
+ggplot(datos_largos, aes(x = F, y = Temperatura)) +
+  geom_point(alpha = 0.6) +
+  facet_wrap(~Sensor) +
+  labs(title = "Temperaturas vs Caudal de Alimentación",
+       x = "Caudal de alimentación (F)",
+       y = "Temperatura (K)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+**Análisis para la dispersión de tempertuara:**
+
+Las temperaturas se estabilizan por rangos, lo que sugiere control por etapas o platos.
+
+### Boxplot del reflujo (D/L)
+
+```{r}
+ggplot(datos, aes(y = reflujo)) +
+  geom_boxplot(fill = "orange", color = "black") +
+  labs(title = "Boxplot del reflujo externo",
+       x = "", # No hay eje x significativo para un boxplot único
+       y = "D / L (Reflujo)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+**Análisis Boxplot para reflujo:**
+
+<p style="text-align: justify;">
+Valor típico estable (~0.3), pero valores extremos alertan sobre desviaciones del proceso. Un reflujo promedio de 0.3 para una columna de 14 platos para lograr una separación típica de dos componentes no es un valor que pueda llamarse eficiente. Implicaría una separación muy pobre.
+</p>
+
+
+## SEMANA 4 PUBLICACIÓN
+
+### COMENTARIOS Y CONCLUSIONES
+
+<p style="text-align: justify;">
+El dataset fue analizado limpiamente, con una transformación útil (reflujo). También se creó la columna de tiempo con intervalos de 0.1 h, fundamental para analizar la dinámica y estabilidad del proceso de destilación, permitiendo observar tendencias, fluctuaciones y la respuesta del sistema y la identificación de tendencias.Las visualizaciones permiten detectar eficiencia, inestabilidad y posibles fuentes de error en el proceso.Las temperaturas sugieren operación por niveles, y el análisis estadístico permite observar el comportamiento no ideal en la columna.
+</p>
+
+### REFLEXIONES
+
+<p style="text-align: justify;">
+Este proyecto ha permitido aplicar los conocimientos de limpieza, transformación y visualización de datos utilizando un conjunto de datos real, lo que facilitó enormemente la exploración de los patrones de comportamiento de la columna. Esta experiencia me reveló que R y sus librerías gráficas son potentes herramientas analíticas. La capacidad de  visualizar la variación de parámetros clave en la columna de destilación  me permite la comprensión del proceso.
+</p>
+
+### ENLACE AL PROYECTO EN GITHUB
+
+
